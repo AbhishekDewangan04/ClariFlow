@@ -1,0 +1,87 @@
+# Production Docker Compose for ClariFlow
+# Single-instance architecture with PostgreSQL, Express API, Telegram bot, and Caddy HTTPS reverse proxy.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: clariflow-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clariflow}
+      POSTGRES_USER: ${POSTGRES_USER:-clariflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password required}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - clariflow-internal
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clariflow} -d ${POSTGRES_DB:-clariflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clariflow-backend-prod
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      POSTGRES_DB: ${POSTGRES_DB:-clariflow}
+      POSTGRES_USER: ${POSTGRES_USER:-clariflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER:-clariflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clariflow}
+      BOT_TOKEN: ${BOT_TOKEN:?Telegram BOT_TOKEN is required}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      replicas: 1  # STRICT ENFORCEMENT: Telegram bot long-polling requires exactly 1 instance to avoid 409 conflict
+    stop_grace_period: 15s  # Allows Telegram bot polling stoppage and database connection pool drain
+    restart: unless-stopped
+    networks:
+      - clariflow-internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  caddy:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clariflow-caddy-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_prod_data:/data
+      - caddy_prod_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - clariflow-internal
+
+networks:
+  clariflow-internal:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+  caddy_prod_data:
+  caddy_prod_config:

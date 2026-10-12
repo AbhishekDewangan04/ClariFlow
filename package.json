@@ -1,0 +1,12 @@
+{
+  "name": "clariflow",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "npm --prefix backend run dev",
+    "build": "npm --prefix backend run build",
+    "start": "npm --prefix backend run start",
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "seed": "npm --prefix backend run build && node backend/seed.js"
+  }
+}

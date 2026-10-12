@@ -1,0 +1,44 @@
+# Caddy configuration for ClariFlow production deployment
+# Automatically provisions and renews Let's Encrypt SSL certificates for public domains,
+# while providing immediate local HTTP testing support for localhost.
+
+{
+    email {$LETSENCRYPT_EMAIL:admin@example.com}
+}
+
+(clariflow_app) {
+    encode gzip zstd
+    root * /srv/dist
+
+    @assets path /assets/*
+    header @assets Cache-Control "public, max-age=31536000, immutable"
+
+    handle /api/* {
+        reverse_proxy backend:5000
+    }
+
+    handle /_health {
+        rewrite * /health
+        reverse_proxy backend:5000
+    }
+
+    handle /health {
+        reverse_proxy backend:5000
+    }
+
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+# Production Domain block (Automatic Let's Encrypt TLS for public domain)
+{$DOMAIN:localhost} {
+    import clariflow_app
+}
+
+# Plain HTTP block: serves localhost, 127.0.0.1, Cloudflare Quick Tunnels (*.trycloudflare.com),
+# and reverse proxies directly on HTTP without 308 redirect loops.
+http:// {
+    import clariflow_app
+}
