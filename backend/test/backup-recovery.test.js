@@ -23,7 +23,7 @@ function getDatabaseUrl(dbName) {
     return parsed.toString();
   }
   const user = process.env.POSTGRES_USER || "clariflow";
-  const password = process.env.POSTGRES_PASSWORD || "DOVNGXKLWEMDIYJXFZZZXTLOPIGVQKAT";
+  const password = process.env.POSTGRES_PASSWORD || "clariflow_password";
   const host = process.env.POSTGRES_HOST || "localhost";
   const port = process.env.POSTGRES_PORT || "5432";
   return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${encodeURIComponent(dbName)}`;
