@@ -6,7 +6,7 @@
     "build": "tsc",
     "dev": "npm run build && node server.js",
     "start": "node server.js",
-    "test": "node --test test/*.test.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
     "postinstall": "prisma skills sync || exit 0"
   },
   "dependencies": {

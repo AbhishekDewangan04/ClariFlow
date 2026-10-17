@@ -28,6 +28,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: clariflow-backend-prod
+    env_file:
+      - .env
+      - ./backend/.env
     environment:
       NODE_ENV: production
       PORT: 5000
@@ -38,6 +41,11 @@ services:
       POSTGRES_PORT: 5432
       DATABASE_URL: postgresql://${POSTGRES_USER:-clariflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clariflow}
       BOT_TOKEN: ${BOT_TOKEN:?Telegram BOT_TOKEN is required}
+      TELEGRAM_POLLING: ${TELEGRAM_POLLING:-true}
+      JWT_SECRET: ${JWT_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
     depends_on:
       postgres:

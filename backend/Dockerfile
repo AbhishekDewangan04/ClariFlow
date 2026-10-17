@@ -1,11 +1,11 @@
 # Multi-stage production Dockerfile for ClariFlow backend
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
 # Copy dependency manifests
 COPY package*.json ./
-RUN npm ci
+RUN npm config set maxsockets 10 && npm ci
 
 # Copy sources and compile TypeScript
 COPY tsconfig.json ./
@@ -15,7 +15,7 @@ COPY prisma.config.ts ./
 RUN npm run build
 
 # Production runner stage
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
@@ -24,11 +24,12 @@ ENV PORT=5000
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm config set maxsockets 10 && npm ci --omit=dev && npm cache clean --force
 
-# Copy compiled files and server runtime
+# Copy compiled files, auth/user source modules, and server runtime
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY src/ ./src/
 COPY server.js ./
 COPY seed.js ./
 

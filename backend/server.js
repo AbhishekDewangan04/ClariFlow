@@ -118,11 +118,23 @@ if (!BOT_TOKEN) {
 
 const isDirectExecution = require.main === module;
 
+const isPollingExplicitlyDisabled =
+  process.env.TELEGRAM_POLLING === "false" ||
+  process.env.TELEGRAM_POLLING === "0" ||
+  process.env.ENABLE_TELEGRAM_BOT === "false";
+
+const isPollingEnabled =
+  isDirectExecution &&
+  process.env.NODE_ENV !== "test" &&
+  !isPollingExplicitlyDisabled;
+
 const bot = new TelegramBot(BOT_TOKEN, {
-  polling: isDirectExecution && process.env.NODE_ENV !== "test",
+  polling: isPollingEnabled,
+  request: { family: 4 },
 });
 
 let unauthorizedLogged = false;
+let conflictLogged = false;
 bot.on("polling_error", (error) => {
   const msg = error.message || String(error);
   if (msg.includes("401") || msg.includes("Unauthorized")) {
@@ -130,6 +142,16 @@ bot.on("polling_error", (error) => {
       unauthorizedLogged = true;
       console.warn("Telegram BOT_TOKEN is unauthorized (401). Polling paused. Check BOT_TOKEN in .env or update via @BotFather.");
       bot.stopPolling().catch(() => {});
+    }
+    return;
+  }
+  if (msg.includes("409") || msg.includes("Conflict")) {
+    if (!conflictLogged) {
+      conflictLogged = true;
+      console.warn(
+        "Telegram 409 Conflict: another instance is polling Telegram with this token.\n" +
+        "To test locally with 'npm run dev', set TELEGRAM_POLLING=false on the Docker backend to yield polling."
+      );
     }
     return;
   }
@@ -315,7 +337,9 @@ app.get("/health", async (req, res) => {
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
       database: "connected",
-      bot: bot && typeof bot.isPolling === "function" && bot.isPolling() ? "polling" : "idle",
+      bot: bot && typeof bot.isPolling === "function" && bot.isPolling()
+        ? "polling"
+        : (isPollingEnabled ? "idle" : "disabled"),
     });
   } catch (err) {
     return res.status(503).json({
@@ -731,7 +755,11 @@ if (isDirectExecution) {
       await connectDatabase();
       await ensureUserTables();
       await bootstrapAdmin();
-      console.log("Telegram bot started");
+      if (isPollingEnabled) {
+        console.log("Telegram bot started (polling enabled)");
+      } else {
+        console.log("Telegram bot initialized (polling disabled via TELEGRAM_POLLING=false)");
+      }
     } catch (error) {
       console.error("Database connection failed:", error);
       process.exit(1);
@@ -760,10 +788,14 @@ async function gracefulShutdown(signal) {
     console.warn("Error closing database:", err.message || err);
   }
 
-  server.close(() => {
-    console.log("HTTP server closed.");
+  if (server && typeof server.close === "function") {
+    server.close(() => {
+      console.log("HTTP server closed.");
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
+  }
 
   setTimeout(() => {
     console.error("Forcing shutdown after timeout.");
