@@ -132,32 +132,38 @@ curl -s -I https://clariflow.yourdomain.com/orders/ORD-TEST-200 | head -n 5
 ## 5. Automated Backups & Rollback
 
 ### Automated Database Backup
-Run the backup script manually or configure it as a daily cron job (`crontab -e`):
+ClariFlow supports automated backups via the built-in Docker daemon in `docker-compose.prod.yml` or via host automation:
 
-**Linux / macOS:**
+* **Docker Service:** `clariflow-backup-prod` automatically takes daily gzip-compressed dumps (`pg_dump --clean --if-exists`) and stores them in `./backups/`.
+* **Configurable Retention:** Backups older than 14 days (configurable via `RETENTION_DAYS`) are automatically pruned.
+
+**Manual / Cron Backup (Linux / macOS):**
 ```bash
 bash scripts/backup.sh
 ```
 
-**Windows (PowerShell):**
+**Manual / Task Scheduler (Windows PowerShell):**
 ```powershell
-.\scripts\backup.ps1
+pwsh -File .\scripts\backup.ps1 -RetentionDays 14 -Compress
 ```
 
-Backups are saved to `./backups/clariflow_backup_<TIMESTAMP>.sql.gz` and automatically pruned after 14 days.
+Backups are saved to `./backups/clariflow_backup_<TIMESTAMP>.sql.gz` and automatically pruned according to the retention window.
 
 ### Disaster Recovery / Rollback
 To restore a previous database state:
 
 **Linux / macOS:**
 ```bash
-bash scripts/rollback.sh ./backups/clariflow_backup_20261012_010000.sql.gz
+bash scripts/rollback.sh ./backups/clariflow_backup_20261017_052422.sql.gz
 ```
 
 **Windows (PowerShell):**
 ```powershell
-.\scripts\rollback.ps1 -BackupFile .\backups\clariflow_backup_20261012_010000.sql
+pwsh -File .\scripts\rollback.ps1 -BackupFile .\backups\clariflow_backup_20261017_052422.sql.gz
 ```
+
+*For comprehensive restoration procedures, isolated test verification, and emergency recovery scenarios, see the complete guide: [BACKUP_RECOVERY.md](BACKUP_RECOVERY.md).*
+
 
 ---
 

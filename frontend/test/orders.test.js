@@ -147,3 +147,42 @@ test('LiquidGL Configuration & Presets', async (t) => {
     assert.equal(isLiquidGLSupported(), false, 'Expected false outside browser')
   })
 })
+
+test('Role-Aware Order Status Lifecycle Transitions', async (t) => {
+  const { getAllowedTransitions } = await import('../src/lib/lifecycle.js')
+
+  await t.test('unauthenticated visitor has 0 allowed transitions (read-only)', () => {
+    assert.deepEqual(getAllowedTransitions(null, 'PROCESSING'), [])
+    assert.deepEqual(getAllowedTransitions(undefined, 'IN_TRANSIT'), [])
+  })
+
+  await t.test('staff can only transition PROCESSING or IN_TRANSIT to SHIPPED', () => {
+    assert.deepEqual(getAllowedTransitions('staff', 'PROCESSING'), ['SHIPPED'])
+    assert.deepEqual(getAllowedTransitions('staff', 'IN_TRANSIT'), ['SHIPPED'])
+    assert.deepEqual(getAllowedTransitions('staff', 'SHIPPED'), [])
+    assert.deepEqual(getAllowedTransitions('staff', 'DELIVERED'), [])
+    assert.deepEqual(getAllowedTransitions('staff', 'CANCELLED'), [])
+  })
+
+  await t.test('manager can advance forward and cancel non-delivered orders', () => {
+    const fromProc = getAllowedTransitions('manager', 'PROCESSING')
+    assert.ok(fromProc.includes('IN_TRANSIT'))
+    assert.ok(fromProc.includes('SHIPPED'))
+    assert.ok(fromProc.includes('DELIVERED'))
+    assert.ok(fromProc.includes('CANCELLED'))
+
+    const fromShip = getAllowedTransitions('manager', 'SHIPPED')
+    assert.deepEqual(fromShip, ['DELIVERED', 'CANCELLED'])
+
+    assert.deepEqual(getAllowedTransitions('manager', 'DELIVERED'), [])
+  })
+
+  await t.test('admin can transition to any other valid status', () => {
+    const fromProc = getAllowedTransitions('admin', 'PROCESSING')
+    assert.deepEqual(fromProc, ['IN_TRANSIT', 'SHIPPED', 'DELIVERED', 'CANCELLED'])
+
+    const fromDeliv = getAllowedTransitions('admin', 'DELIVERED')
+    assert.deepEqual(fromDeliv, ['PROCESSING', 'IN_TRANSIT', 'SHIPPED', 'CANCELLED'])
+  })
+})
+

@@ -20,6 +20,7 @@ import OrderTiles from '../components/order/OrderTiles'
 import StatusTrack from '../components/order/StatusTrack'
 import DetailsList from '../components/order/DetailsList'
 import ActivityTimeline from '../components/order/ActivityTimeline'
+import OrderStatusUpdater from '../components/order/OrderStatusUpdater'
 import { useRecentOrders, recordOrderView } from '../hooks/useRecentOrders'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { getOrder } from '../api/orders'
@@ -428,6 +429,13 @@ export default function Orders() {
                   <OrderTiles order={selectedOrder} />
                 </div>
               </Card>
+
+              {/* Order Status Action Controls */}
+              <OrderStatusUpdater
+                orderNumber={selectedOrder.orderNumber}
+                currentStatus={selectedOrder.status}
+                onUpdated={() => fetchAndSelect(selectedOrder.orderNumber, { silent: true })}
+              />
 
               {/* Shipment Timeline Card */}
               <StatusTrack status={selectedOrder.status} order={selectedOrder} />

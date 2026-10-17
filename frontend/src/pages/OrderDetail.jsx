@@ -18,6 +18,7 @@ import OrderTiles from '../components/order/OrderTiles'
 import StatusTrack from '../components/order/StatusTrack'
 import DetailsList from '../components/order/DetailsList'
 import ActivityTimeline from '../components/order/ActivityTimeline'
+import OrderStatusUpdater from '../components/order/OrderStatusUpdater'
 import { container, item } from '../lib/motion'
 import { formatRelative } from '../lib/format'
 
@@ -123,6 +124,13 @@ export default function OrderDetail() {
           </Button>
         </div>
       </motion.header>
+
+      <OrderStatusUpdater
+        orderNumber={order.orderNumber}
+        currentStatus={order.status}
+        onUpdated={() => retry()}
+        className="mb-6"
+      />
 
       <OrderTiles order={order} />
       <div className="mt-6">

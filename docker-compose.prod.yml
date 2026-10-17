@@ -77,6 +77,27 @@ services:
     networks:
       - clariflow-internal
 
+  backup:
+    image: postgres:16-alpine
+    container_name: clariflow-backup-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clariflow}
+      POSTGRES_USER: ${POSTGRES_USER:-clariflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-86400}  # Default: 24h (86400s)
+      RETENTION_DAYS: ${RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-cron.sh:/usr/local/bin/backup-cron.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup-cron.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - clariflow-internal
+
 networks:
   clariflow-internal:
     driver: bridge
@@ -85,3 +106,4 @@ volumes:
   postgres_prod_data:
   caddy_prod_data:
   caddy_prod_config:
+

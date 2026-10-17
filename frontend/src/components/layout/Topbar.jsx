@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Bell, Search } from 'lucide-react'
+import { Bell, LogIn, Search } from 'lucide-react'
 import Logo from './Logo'
 import BackendPill from '../domain/BackendPill'
 import { useLiquidGlass } from '../../hooks/useLiquidGlass'
+import { useAuth } from '../../context/AuthContext.jsx'
+
+const ROLE_LABELS = { admin: 'Admin', manager: 'Manager', staff: 'Staff' }
 
 export default function Topbar() {
   const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const inputRef = useRef(null)
   const navRef = useRef(null)
   const searchRef = useRef(null)
@@ -99,12 +103,26 @@ export default function Topbar() {
             <span className="absolute right-2.5 top-2.5 size-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgb(129_140_248)]" />
           </button>
 
-          <div
-            title="Account: Alex (Workspace Admin)"
-            className="grid size-10 place-items-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-sm font-semibold text-white shadow-[0_0_16px_rgba(99,102,241,0.4)] ring-1 ring-white/20"
-          >
-            A
-          </div>
+          {user ? (
+            <button
+              type="button"
+              onClick={async () => { await logout(); navigate('/login') }}
+              title={`${user.name} (${ROLE_LABELS[user.role] || user.role}) — click to sign out`}
+              aria-label="Sign out"
+              className="grid size-10 place-items-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-sm font-semibold text-white shadow-[0_0_16px_rgba(99,102,241,0.4)] ring-1 ring-white/20 hover:opacity-80 transition"
+            >
+              {user.name?.[0]?.toUpperCase() ?? 'U'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-400/40 bg-indigo-500/15 px-3 text-xs font-semibold text-indigo-200 shadow-[0_0_14px_rgba(99,102,241,0.2)] hover:bg-indigo-500/25 hover:text-white transition"
+            >
+              <LogIn className="size-4" />
+              <span className="hidden sm:inline">Sign In</span>
+            </button>
+          )}
         </div>
       </div>
     </header>

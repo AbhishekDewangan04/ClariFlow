@@ -2,6 +2,24 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { getOrderByNumber, closeDatabase } = require("../src/db");
 
+let testServer = null;
+
+test.before(async () => {
+  try {
+    const res = await fetch("http://localhost:5000/");
+    if (res.ok) return;
+  } catch {
+    const { app } = require("../server");
+    const { connectDatabase } = require("../dist/db");
+    const { ensureUserTables, bootstrapAdmin } = require("../src/users");
+    await connectDatabase();
+    await ensureUserTables();
+    await bootstrapAdmin();
+    testServer = app.listen(5000);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+});
+
 test("Order Lookup Unit Tests", async (t) => {
   await t.test("safely handles empty string or whitespace without querying database", async () => {
     assert.equal(await getOrderByNumber(""), null);
@@ -277,5 +295,8 @@ test("Telegram Bot Order Lookup Tests", async (t) => {
 });
 
 test.after(async () => {
+  if (testServer) {
+    await new Promise((resolve) => testServer.close(resolve));
+  }
   await closeDatabase();
 });
