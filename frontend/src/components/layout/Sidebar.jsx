@@ -51,7 +51,7 @@ function NavItem({ to, label, icon: Icon, end, tag }) {
 }
 
 export default function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, loading } = useAuth()
   const navigate = useNavigate()
 
   async function handleLogout() {
@@ -64,7 +64,9 @@ export default function Sidebar() {
   return (
     <aside className="flex h-full w-[220px] flex-col border-r border-edge bg-void/70 backdrop-blur-2xl">
       <div className="flex h-[70px] items-center px-5">
-        <Logo />
+        <NavLink to="/overview" aria-label="ClariFlow workspace">
+          <Logo />
+        </NavLink>
       </div>
 
       <nav aria-label="Main" className="mt-2 flex-1 overflow-y-auto px-3">
@@ -88,7 +90,9 @@ export default function Sidebar() {
         <BackendPill className="w-full justify-center" />
 
         {/* User info + logout or Sign In */}
-        {user ? (
+        {loading && !user ? (
+          <div className="h-11 rounded-xl bg-white/[0.04] animate-pulse" />
+        ) : user ? (
           <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
             <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-gradient-to-tr from-indigo-600/60 to-purple-500/40 text-xs font-bold text-white">
               {user.name?.[0]?.toUpperCase()}

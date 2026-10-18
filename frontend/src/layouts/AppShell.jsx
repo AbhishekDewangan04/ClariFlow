@@ -5,9 +5,10 @@ import AuroraBackground from '../components/layout/AuroraBackground'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
 import BottomNav from '../components/layout/BottomNav'
-import { container } from '../lib/motion'
-
-const pageVariants = container(0.075, 0.02)
+const pageVariants = {
+  hidden: { opacity: 0.9 },
+  show: { opacity: 1, transition: { duration: 0.12, ease: 'easeOut' } },
+}
 
 export default function AppShell() {
   const { pathname } = useLocation()

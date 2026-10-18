@@ -20,19 +20,52 @@ const CAPS = {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('cf_user')
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  })
   const [loading, setLoading] = useState(true) // true while verifying cookie on mount
 
   // On mount, try to restore the session from the cookie.
   useEffect(() => {
+    let isMounted = true
     getMe()
-      .then((data) => setUser(data.user))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (isMounted) {
+          const u = data?.user || null
+          setUser(u)
+          try {
+            if (u) localStorage.setItem('cf_user', JSON.stringify(u))
+            else localStorage.removeItem('cf_user')
+          } catch {}
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setUser(null)
+          try {
+            localStorage.removeItem('cf_user')
+          } catch {}
+        }
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const login = useCallback((userData) => {
     setUser(userData)
+    try {
+      if (userData) localStorage.setItem('cf_user', JSON.stringify(userData))
+    } catch {}
   }, [])
 
   const logout = useCallback(async () => {
@@ -42,6 +75,9 @@ export function AuthProvider({ children }) {
       // Even if the server call fails, clear local state.
     }
     setUser(null)
+    try {
+      localStorage.removeItem('cf_user')
+    } catch {}
   }, [])
 
   /**
@@ -56,8 +92,19 @@ export function AuthProvider({ children }) {
     [user]
   )
 
+  const updateUser = useCallback((updatedData) => {
+    setUser((prev) => {
+      if (!prev) return null
+      const next = { ...prev, ...updatedData }
+      try {
+        localStorage.setItem('cf_user', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, can }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, can, updateUser }}>
       {children}
     </AuthContext.Provider>
   )

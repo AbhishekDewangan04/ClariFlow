@@ -133,10 +133,10 @@ export default function OrderStatusUpdater({ orderNumber, currentStatus, onUpdat
                 value={currentTarget}
                 onChange={(e) => setSelectedStatus(e.target.value)}
                 disabled={loading}
-                className="w-full appearance-none rounded-xl border border-white/10 bg-midnight/80 px-3.5 py-2 text-xs font-semibold text-white outline-none transition focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
+                className="w-full appearance-none rounded-xl border border-white/10 bg-[#090d1a] px-3.5 py-2 text-xs font-semibold text-white outline-none transition hover:border-white/20 hover:bg-[#0e1428] focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/25 disabled:opacity-60 cursor-pointer shadow-sm"
               >
                 {allowed.map((st) => (
-                  <option key={st} value={st} className="bg-[#0b0d19] text-white">
+                  <option key={st} value={st} className="bg-[#0b0f1d] text-white py-1.5">
                     Transition to {STATUS_LABELS[st] || st}
                   </option>
                 ))}

@@ -31,6 +31,7 @@ function messageFrom(body) {
 
 function errorForStatus(status, body) {
   const serverMessage = messageFrom(body)
+  if (status === 401) return new ApiError(serverMessage ?? 'Authentication required.', { kind: 'unauthorized', status })
   if (status === 404) return new ApiError(serverMessage ?? 'Not found.', { kind: 'not_found', status })
   if (status === 503 && serverMessage && serverMessage.toLowerCase().includes('database')) {
     return new ApiError(serverMessage, { kind: 'database_unavailable', status })
@@ -54,7 +55,11 @@ export async function getJson(url, { signal, timeoutMs = env.requestTimeoutMs } 
   signal?.addEventListener('abort', forwardAbort)
 
   try {
-    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal })
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+      signal: controller.signal,
+    })
     const body = parseBody(await res.text())
     if (!res.ok) throw errorForStatus(res.status, body)
     return body

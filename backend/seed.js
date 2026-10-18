@@ -56,6 +56,27 @@ async function seed() {
         "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
         "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS "User" (
+        id         SERIAL PRIMARY KEY,
+        email      VARCHAR(255) UNIQUE NOT NULL,
+        name       VARCHAR(255) NOT NULL,
+        password   VARCHAR(255) NOT NULL,
+        role       VARCHAR(50)  NOT NULL DEFAULT 'staff',
+        "isActive" BOOLEAN      NOT NULL DEFAULT TRUE,
+        "createdAt" TIMESTAMP   NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMP   NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS "AuditLog" (
+        id         SERIAL PRIMARY KEY,
+        "actorId"  INTEGER REFERENCES "User"(id),
+        "actorEmail" VARCHAR(255),
+        action     VARCHAR(100) NOT NULL,
+        target     VARCHAR(255),
+        detail     JSONB,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT NOW()
+      );
     `);
 
     // Seed product if not exists
@@ -93,6 +114,37 @@ async function seed() {
           "totalAmount" = EXCLUDED."totalAmount",
           "updatedAt" = NOW();
     `, [productId]);
+
+    // Seed admin user if configured
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminName = process.env.ADMIN_NAME || "Admin";
+
+    if (adminEmail && adminPassword) {
+      const bcrypt = require("bcrypt");
+      const normalizedEmail = adminEmail.toLowerCase().trim();
+      const existingUser = await pool.query(
+        'SELECT id, "isActive", role FROM "User" WHERE LOWER(email) = LOWER($1) LIMIT 1',
+        [normalizedEmail]
+      );
+      if (existingUser.rows.length === 0) {
+        const hashedPassword = await bcrypt.hash(adminPassword, 12);
+        await pool.query(
+          `INSERT INTO "User" (email, name, password, role, "isActive") VALUES ($1, $2, $3, 'admin', TRUE)`,
+          [normalizedEmail, adminName, hashedPassword]
+        );
+        console.log(`Successfully seeded admin user for ${normalizedEmail}`);
+      } else {
+        const user = existingUser.rows[0];
+        if (!user.isActive || user.role !== "admin") {
+          await pool.query(
+            `UPDATE "User" SET "isActive" = TRUE, role = 'admin', "updatedAt" = NOW() WHERE id = $1`,
+            [user.id]
+          );
+          console.log(`Restored active admin status for ${normalizedEmail}`);
+        }
+      }
+    }
 
     console.log("Successfully seeded database with ORD-TEST-200 and demo orders!");
   } catch (err) {

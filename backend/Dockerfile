@@ -26,10 +26,11 @@ ENV PORT=5000
 COPY package*.json ./
 RUN npm config set maxsockets 10 && npm ci --omit=dev && npm cache clean --force
 
-# Copy compiled files, auth/user source modules, and server runtime
+# Copy compiled files, auth/user source modules, maintenance scripts, and server runtime
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 COPY server.js ./
 COPY seed.js ./
 

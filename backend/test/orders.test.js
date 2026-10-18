@@ -3,11 +3,12 @@ const assert = require("node:assert/strict");
 const { getOrderByNumber, closeDatabase } = require("../src/db");
 
 let testServer = null;
+let authCookie = null;
 
 test.before(async () => {
   try {
     const res = await fetch("http://localhost:5000/");
-    if (res.ok) return;
+    if (!res.ok) throw new Error("not ready");
   } catch {
     const { app } = require("../server");
     const { connectDatabase } = require("../dist/db");
@@ -17,6 +18,20 @@ test.before(async () => {
     await bootstrapAdmin();
     testServer = app.listen(5000);
     await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  try {
+    const loginRes = await fetch("http://localhost:5000/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "admin@clariflow.local", password: "ClariFlow@Admin2026" }),
+    });
+    const setCookie = loginRes.headers.get("set-cookie");
+    if (setCookie) {
+      authCookie = setCookie.split(";")[0];
+    }
+  } catch (err) {
+    console.error("Failed to obtain authCookie for orders tests:", err.message);
   }
 });
 
@@ -89,15 +104,26 @@ test("Order API Integration Tests", async (t) => {
     }
   });
 
-  await t.test("GET /api/orders/%20%20 (whitespace) returns 400 invalid order number", async () => {
-    const res = await fetch(`${baseUrl}/api/orders/%20%20`);
+  await t.test("Unauthenticated GET /api/orders/ORD-TEST-200 returns 401 Unauthorized", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/ORD-TEST-200`);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error, "Authentication required.");
+  });
+
+  await t.test("GET /api/orders/%20%20 with session returns 400 invalid order number", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/%20%20`, {
+      headers: authCookie ? { cookie: authCookie } : {},
+    });
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.equal(body.error, "Invalid order number");
   });
 
-  await t.test("Regression: GET /api/orders/ORD-TEST-200 returns 200 with Alex Rivera details", async () => {
-    const res = await fetch(`${baseUrl}/api/orders/ORD-TEST-200`);
+  await t.test("Regression: GET /api/orders/ORD-TEST-200 with session returns 200 with Alex Rivera details", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/ORD-TEST-200`, {
+      headers: authCookie ? { cookie: authCookie } : {},
+    });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.orderNumber, "ORD-TEST-200");
@@ -109,8 +135,10 @@ test("Order API Integration Tests", async (t) => {
     assert.ok(body.updatedAt);
   });
 
-  await t.test("Regression: GET /api/orders/ORD-8821 returns 200 with Sarah Chen details", async () => {
-    const res = await fetch(`${baseUrl}/api/orders/ORD-8821`);
+  await t.test("Regression: GET /api/orders/ORD-8821 with session returns 200 with Sarah Chen details", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/ORD-8821`, {
+      headers: authCookie ? { cookie: authCookie } : {},
+    });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.orderNumber, "ORD-8821");
@@ -119,8 +147,10 @@ test("Order API Integration Tests", async (t) => {
     assert.equal(body.totalAmount, 349.5);
   });
 
-  await t.test("Regression: GET /api/orders/ORD-4092 returns 200 with Marcus Vance details", async () => {
-    const res = await fetch(`${baseUrl}/api/orders/ORD-4092`);
+  await t.test("Regression: GET /api/orders/ORD-4092 with session returns 200 with Marcus Vance details", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/ORD-4092`, {
+      headers: authCookie ? { cookie: authCookie } : {},
+    });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.orderNumber, "ORD-4092");
@@ -129,15 +159,19 @@ test("Order API Integration Tests", async (t) => {
     assert.equal(body.totalAmount, 89.99);
   });
 
-  await t.test("Regression: GET /api/orders/ORD-TEST-300 returns 404 for unknown order", async () => {
-    const res = await fetch(`${baseUrl}/api/orders/ORD-TEST-300`);
+  await t.test("Regression: GET /api/orders/ORD-TEST-300 with session returns 404 for unknown order", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/ORD-TEST-300`, {
+      headers: authCookie ? { cookie: authCookie } : {},
+    });
     assert.equal(res.status, 404);
     const body = await res.json();
     assert.equal(body.error, "Order not found");
   });
 
-  await t.test("Regression: GET /api/orders/ORD-DOES-NOT-EXIST-404 returns 404 Order not found", async () => {
-    const res = await fetch(`${baseUrl}/api/orders/ORD-DOES-NOT-EXIST-404`);
+  await t.test("Regression: GET /api/orders/ORD-DOES-NOT-EXIST-404 with session returns 404 Order not found", async () => {
+    const res = await fetch(`${baseUrl}/api/orders/ORD-DOES-NOT-EXIST-404`, {
+      headers: authCookie ? { cookie: authCookie } : {},
+    });
     assert.equal(res.status, 404);
     const body = await res.json();
     assert.equal(body.error, "Order not found");
@@ -145,7 +179,9 @@ test("Order API Integration Tests", async (t) => {
 
   await t.test("Regression: Frontend Vite proxy (localhost:5173) returns 200 with seeded order", async () => {
     try {
-      const res = await fetch("http://localhost:5173/api/orders/ORD-TEST-200");
+      const res = await fetch("http://localhost:5173/api/orders/ORD-TEST-200", {
+        headers: authCookie ? { cookie: authCookie } : {},
+      });
       if (res.ok) {
         assert.equal(res.status, 200);
         const body = await res.json();
@@ -160,7 +196,9 @@ test("Order API Integration Tests", async (t) => {
 
   await t.test("Regression: Caddy proxy (localhost:80) returns 200 with seeded order", async () => {
     try {
-      const res = await fetch("http://localhost/api/orders/ORD-TEST-200");
+      const res = await fetch("http://localhost/api/orders/ORD-TEST-200", {
+        headers: authCookie ? { cookie: authCookie } : {},
+      });
       if (res.ok) {
         assert.equal(res.status, 200);
         const body = await res.json();
@@ -169,7 +207,7 @@ test("Order API Integration Tests", async (t) => {
         assert.equal(body.status, "DELIVERED");
       }
     } catch (_err) {
-      // Caddy might be skipped if docker is not running in pure headless CI
+      // Caddy might not be reachable in CI
     }
   });
 });

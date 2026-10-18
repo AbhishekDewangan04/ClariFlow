@@ -130,13 +130,13 @@ function InviteModal({ onClose, onCreated }) {
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value })}
                 disabled={loading}
-                className="h-10 w-full appearance-none rounded-xl border border-white/10 bg-white/[0.04] px-3.5 pr-9 text-sm text-white outline-none transition focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
+                className="h-10 w-full appearance-none rounded-xl border border-white/10 bg-[#090d1a] px-3.5 pr-9 text-sm text-white outline-none transition hover:border-white/20 focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/25 disabled:opacity-60 cursor-pointer"
               >
-                <option value="staff">Staff</option>
-                <option value="manager">Manager</option>
-                <option value="admin">Admin</option>
+                <option value="staff" className="bg-[#0b0f1d] text-white py-1.5">Staff (Fulfillment)</option>
+                <option value="manager" className="bg-[#0b0f1d] text-white py-1.5">Manager (Operations)</option>
+                <option value="admin" className="bg-[#0b0f1d] text-white py-1.5">Admin (Full Control)</option>
               </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             </div>
           </div>
 
@@ -205,7 +205,7 @@ export default function Team() {
   const sorted = [...users].sort((a, b) => (roleOrder[a.role] ?? 3) - (roleOrder[b.role] ?? 3))
 
   return (
-    <motion.div variants={container(0.06)} initial="hidden" animate="show" className="space-y-6">
+    <motion.div variants={container(0)} initial="hidden" animate="show" className="space-y-6">
       {/* Toast */}
       {toast && (
         <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm font-medium shadow-xl backdrop-blur-xl transition ${
@@ -301,18 +301,18 @@ export default function Team() {
                         {isSelf ? (
                           <RoleBadge role={u.role} />
                         ) : (
-                          <div className="relative">
+                          <div className="relative inline-block">
                             <select
                               value={u.role}
                               onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                              className="appearance-none rounded-xl border border-white/10 bg-white/[0.03] py-1.5 pl-2.5 pr-7 text-xs font-semibold text-white outline-none transition focus:border-indigo-400/60 hover:bg-white/[0.06] cursor-pointer"
+                              className="appearance-none rounded-xl border border-white/10 bg-[#090d1a] py-1.5 pl-2.5 pr-7 text-xs font-semibold text-white outline-none transition hover:border-white/20 hover:bg-[#0e1428] focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/25 cursor-pointer shadow-sm"
                               aria-label={`Change role for ${u.name}`}
                             >
-                              <option value="staff">Staff</option>
-                              <option value="manager">Manager</option>
-                              <option value="admin">Admin</option>
+                              <option value="staff" className="bg-[#0b0f1d] text-white py-1">Staff</option>
+                              <option value="manager" className="bg-[#0b0f1d] text-white py-1">Manager</option>
+                              <option value="admin" className="bg-[#0b0f1d] text-white py-1">Admin</option>
                             </select>
-                            <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-slate-500" />
+                            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
                           </div>
                         )}
                       </td>

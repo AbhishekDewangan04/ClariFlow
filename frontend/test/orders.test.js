@@ -186,3 +186,88 @@ test('Role-Aware Order Status Lifecycle Transitions', async (t) => {
   })
 })
 
+test('Frontend Protected Order API Client', async (t) => {
+  const { getOrder } = await import('../src/api/orders.js')
+  const originalFetch = global.fetch
+  t.afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  await t.test('getOrder() sends credentials: include to backend', async () => {
+    let capturedOptions = null
+    global.fetch = async (_url, options) => {
+      capturedOptions = options
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            orderNumber: 'ORD-TEST-200',
+            customerName: 'Alex Rivera',
+            status: 'DELIVERED',
+            totalAmount: 200,
+          }),
+      }
+    }
+
+    const order = await getOrder('ORD-TEST-200')
+    assert.equal(order.orderNumber, 'ORD-TEST-200')
+    assert.equal(capturedOptions.credentials, 'include', 'Expected credentials to be included for auth session')
+  })
+
+  await t.test('getOrder() throws ApiError with kind "unauthorized" on 401 unauthenticated response', async () => {
+    global.fetch = async () => ({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({ error: 'Authentication required.' }),
+    })
+
+    await assert.rejects(
+      async () => getOrder('ORD-TEST-200'),
+      (err) => {
+        assert.ok(err instanceof ApiError)
+        assert.equal(err.status, 401)
+        assert.equal(err.kind, 'unauthorized')
+        assert.equal(err.message, 'Authentication required.')
+        return true
+      }
+    )
+  })
+
+  await t.test('getOrder() throws ApiError with kind "not_found" on 404 response', async () => {
+    global.fetch = async () => ({
+      ok: false,
+      status: 404,
+      text: async () => JSON.stringify({ error: 'Order not found.' }),
+    })
+
+    await assert.rejects(
+      async () => getOrder('ORD-UNKNOWN'),
+      (err) => {
+        assert.ok(err instanceof ApiError)
+        assert.equal(err.status, 404)
+        assert.equal(err.kind, 'not_found')
+        return true
+      }
+    )
+  })
+})
+
+test('Application Route & Navigation Mapping', async (t) => {
+  const { NAV, ADMIN_NAV } = await import('../src/components/layout/nav.js')
+
+  await t.test('NAV items map to protected workspace endpoints (/overview, /orders, /support)', () => {
+    const paths = NAV.map((n) => n.to)
+    assert.ok(paths.includes('/overview'), 'Expected Overview to map to /overview')
+    assert.ok(paths.includes('/orders'), 'Expected Orders to map to /orders')
+    assert.ok(paths.includes('/support'), 'Expected Support to map to /support')
+    assert.ok(!paths.includes('/'), 'Root / must be reserved for the public landing page')
+  })
+
+  await t.test('ADMIN_NAV items map to admin-only routes (/team, /audit-logs)', () => {
+    const paths = ADMIN_NAV.map((n) => n.to)
+    assert.ok(paths.includes('/team'))
+    assert.ok(paths.includes('/audit-logs'))
+  })
+})
+

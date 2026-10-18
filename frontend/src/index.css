@@ -81,6 +81,13 @@
   :focus-visible { outline: 2px solid #67e8f9; outline-offset: 2px; border-radius: 8px; }
   ::selection { background: rgb(99 102 241 / 0.5); color: #fff; }
   * { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.18) transparent; }
+  select {
+    color-scheme: dark;
+  }
+  option {
+    background-color: #0b0f1d;
+    color: #e8ecf8;
+  }
 }
 
 /* Cursor-tracking spotlight for interactive glass cards. --mx/--my are set from JS without re-rendering. */

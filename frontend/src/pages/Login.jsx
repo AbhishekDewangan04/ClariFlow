@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { AlertCircle, Eye, EyeOff, Lock, Mail, Zap } from 'lucide-react'
@@ -9,10 +9,11 @@ import AuroraBackground from '../components/layout/AuroraBackground.jsx'
 
 export default function Login() {
   usePageTitle('Sign in')
-  const { login } = useAuth()
+  const { user, login, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = location.state?.from?.pathname || '/'
+  const rawFrom = location.state?.from
+  const from = rawFrom?.pathname ? `${rawFrom.pathname}${rawFrom.search || ''}` : '/overview'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -35,7 +36,17 @@ export default function Login() {
       login(data.user)
       navigate(from, { replace: true })
     } catch (err) {
-      setError(err?.message || 'Login failed. Check your credentials.')
+      if (err?.kind === 'network' || err?.message?.toLowerCase().includes('connect')) {
+        setError('Network error: Unable to reach ClariFlow backend. Please verify your connection.')
+      } else if (err?.kind === 'rate_limited' || err?.status === 429) {
+        setError(err.message || 'Too many login attempts. Please wait 15 minutes before trying again.')
+      } else if (err?.kind === 'server' || err?.status >= 500) {
+        setError('Server error: The service encountered a problem. Please try again shortly.')
+      } else if (err?.kind === 'unauthorized' || err?.status === 401) {
+        setError('Invalid email or password. Please check your credentials and try again.')
+      } else {
+        setError(err?.message || 'Login failed. Please verify your credentials and try again.')
+      }
     } finally {
       setLoading(false)
     }
@@ -74,6 +85,38 @@ export default function Login() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4 px-8 py-7" noValidate>
+            {user && (
+              <div className="flex flex-col gap-2 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-3.5 text-xs text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>Currently signed in as:</span>
+                  <span className="rounded-md border border-indigo-400/40 bg-indigo-500/20 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-indigo-300">
+                    {user.role}
+                  </span>
+                </div>
+                <div className="font-semibold text-white truncate text-sm">
+                  {user.name} <span className="text-slate-400 font-normal">({user.email})</span>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate(from, { replace: true })}
+                    className="flex-1 rounded-xl border border-white/10 bg-white/10 py-1.5 text-center text-xs font-medium text-white hover:bg-white/20 transition"
+                  >
+                    Go to workspace →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await logout()
+                    }}
+                    className="flex-1 rounded-xl border border-rose-500/30 bg-rose-500/15 py-1.5 text-center text-xs font-medium text-rose-300 hover:bg-rose-500/25 transition"
+                  >
+                    Sign out to switch
+                  </button>
+                </div>
+              </div>
+            )}
+
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}

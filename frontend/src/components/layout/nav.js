@@ -1,7 +1,7 @@
 import { Box, History, LayoutGrid, MessageSquare, Users } from 'lucide-react'
 
 export const NAV = [
-  { to: '/', label: 'Overview', icon: LayoutGrid, end: true },
+  { to: '/overview', label: 'Overview', icon: LayoutGrid },
   { to: '/orders', label: 'Orders', icon: Box },
   { to: '/support', label: 'Support', icon: MessageSquare, tag: 'PREVIEW' },
 ]

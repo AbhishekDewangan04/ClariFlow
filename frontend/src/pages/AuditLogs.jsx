@@ -7,6 +7,7 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   User,
   Package,
   Key,
@@ -182,7 +183,7 @@ export default function AuditLogs() {
   const totalPages = Math.ceil(total / limit) || 1
 
   return (
-    <motion.div variants={container(0.06)} initial="hidden" animate="show" className="space-y-6">
+    <motion.div variants={container(0)} initial="hidden" animate="show" className="space-y-6">
       {/* Top Header Card */}
       <Card liquid reveal className="p-6 sm:p-7">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-baseline sm:justify-between">
@@ -219,21 +220,24 @@ export default function AuditLogs() {
             <label htmlFor={filterSelectId} className="sr-only">
               Filter action
             </label>
-            <select
-              id={filterSelectId}
-              value={actionFilter}
-              onChange={(e) => {
-                setActionFilter(e.target.value)
-                setPage(1)
-              }}
-              className="rounded-xl border border-white/10 bg-midnight/80 px-3 py-1.5 text-xs font-semibold text-white outline-none transition focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/20"
-            >
-              {ACTION_FILTERS.map((f) => (
-                <option key={f.value} value={f.value} className="bg-[#0b0d19]">
-                  {f.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative inline-block">
+              <select
+                id={filterSelectId}
+                value={actionFilter}
+                onChange={(e) => {
+                  setActionFilter(e.target.value)
+                  setPage(1)
+                }}
+                className="appearance-none rounded-xl border border-white/10 bg-[#090d1a] pl-3 pr-8 py-1.5 text-xs font-semibold text-white outline-none transition hover:border-white/20 hover:bg-[#0e1428] focus:border-indigo-400/60 focus:ring-2 focus:ring-indigo-500/25 cursor-pointer shadow-sm"
+              >
+                {ACTION_FILTERS.map((f) => (
+                  <option key={f.value} value={f.value} className="bg-[#0b0f1d] text-white py-1">
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+            </div>
           </div>
 
           <div className="font-mono text-xs text-slate-400">

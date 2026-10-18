@@ -24,7 +24,7 @@ export default function Support() {
   const [activeTab, setActiveTab] = useState('All')
 
   return (
-    <motion.div variants={container(0.06)} initial="hidden" animate="show" className="space-y-6">
+    <motion.div variants={container(0)} initial="hidden" animate="show" className="space-y-6">
       {/* Header with Preview Box on Right */}
       <Card liquid reveal className="p-6 sm:p-7">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

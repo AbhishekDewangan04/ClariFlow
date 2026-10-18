@@ -109,7 +109,7 @@ export default function Orders() {
   const selectedOrder = orders.find((o) => o.orderNumber === selectedOrderNumber) || orders[0] || null
 
   return (
-    <motion.div variants={container(0.06)} initial="hidden" animate="show" className="space-y-6">
+    <motion.div variants={container(0)} initial="hidden" animate="show" className="space-y-6">
       {/* Top Header Card */}
       <Card liquid reveal className="p-6 sm:p-7">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between">

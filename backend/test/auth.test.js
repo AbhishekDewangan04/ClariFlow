@@ -144,6 +144,52 @@ test("Security 1 — Authentication", async (t) => {
     });
     assert.equal(status, 401);
     assert.ok(body.error);
+    assert.equal(body.error, "Invalid email or password.");
+  });
+
+  await t.test("POST /api/auth/login with case-insensitive and whitespace-padded email returns 200", async () => {
+    const { status, body } = await post("/api/auth/login", {
+      email: "  ADMIN@CLARIFLOW.LOCAL  ",
+      password: "ClariFlow@Admin2026",
+    });
+    assert.equal(status, 200);
+    assert.equal(body.user.email, "admin@clariflow.local");
+  });
+
+  await t.test("POST /api/auth/login for deactivated account returns 401 Unauthorized", async () => {
+    const pool = getPool();
+    // Temporarily create a deactivated user
+    const bcrypt = require("bcrypt");
+    const testHash = await bcrypt.hash("DeactPassword123!", 12);
+    const deactEmail = "deact_login_test@clariflow.local";
+    await pool.query(
+      `INSERT INTO "User" (email, name, password, role, "isActive")
+       VALUES ($1, 'Deactivated User', $2, 'staff', FALSE)
+       ON CONFLICT (email) DO UPDATE SET "isActive" = FALSE`,
+      [deactEmail, testHash]
+    );
+
+    const { status, body } = await post("/api/auth/login", {
+      email: deactEmail,
+      password: "DeactPassword123!",
+    });
+    assert.equal(status, 401);
+    assert.equal(body.error, "Invalid email or password.");
+  });
+
+  await t.test("repairAdmin safely creates or updates admin without altering other records", async () => {
+    const { repairAdmin, getUserByEmail } = require("../src/users");
+    const expectedEmail = (process.env.ADMIN_EMAIL || "admin@clariflow.local").toLowerCase().trim();
+    const result = await repairAdmin();
+    assert.ok(["created", "repaired"].includes(result.action));
+    assert.equal(result.user.email, expectedEmail);
+    assert.equal(result.user.role, "admin");
+    assert.equal(result.user.isActive, true);
+
+    const adminInDb = await getUserByEmail(expectedEmail);
+    assert.ok(adminInDb);
+    assert.equal(adminInDb.role, "admin");
+    assert.equal(adminInDb.isActive, true);
   });
 
   await t.test("POST /api/auth/login with missing email or password returns 400 Bad Request", async () => {
@@ -368,9 +414,15 @@ test("Security 3 — Invalid Transitions", async (t) => {
     assert.ok(body.error?.includes("Invalid status"));
   });
 
+  await t.test("GET /api/orders/ORD-TEST-200 without cookie returns 401 Unauthorized", async () => {
+    const { status, body } = await get("/api/orders/ORD-TEST-200");
+    assert.equal(status, 401);
+    assert.equal(body.error, "Authentication required.");
+  });
+
   await t.test("Transitioning to the identical current status returns 400 Bad Request", async () => {
     // ORD-TEST-200 is DELIVERED
-    const orderRes = await get("/api/orders/ORD-TEST-200");
+    const orderRes = await get("/api/orders/ORD-TEST-200", adminCookie);
     const currentStatus = orderRes.body.status;
 
     const { status, body } = await patch("/api/orders/ORD-TEST-200/status", { status: currentStatus }, adminCookie);
@@ -598,5 +650,43 @@ test("Security 5 — Hardening: Immediate Session Invalidation & Zero Credential
     assert.equal(meRes.status, 200);
     assert.equal(meRes.body.user.password, undefined, "Profile must never include password field");
   });
-});
 
+  await t.test("Profile Settings: update display name, reject role escalation, verify persistence", async () => {
+    // Create and login as a staff user
+    const profileEmail = `profile-${Date.now()}@clariflow.local`;
+    await post(
+      "/api/admin/users",
+      { email: profileEmail, name: "Initial Name", password: "Password123!", role: "staff" },
+      adminCookie
+    );
+    const loginStaff = await post("/api/auth/login", {
+      email: profileEmail,
+      password: "Password123!",
+    });
+    const profileCookie = extractCookie(loginStaff.headers);
+
+    // Unauthenticated request should be rejected
+    const unauth = await patch("/api/auth/profile", { name: "Hacker" });
+    assert.equal(unauth.status, 401);
+
+    // Empty name should be rejected
+    const emptyName = await patch("/api/auth/profile", { name: "   " }, profileCookie);
+    assert.equal(emptyName.status, 400);
+
+    // Attempting to change role should be forbidden
+    const roleEscalation = await patch("/api/auth/profile", { name: "Staff User", role: "admin" }, profileCookie);
+    assert.equal(roleEscalation.status, 403);
+
+    // Valid name update
+    const updateRes = await patch("/api/auth/profile", { name: "Verified Staff Operator" }, profileCookie);
+    assert.equal(updateRes.status, 200);
+    assert.equal(updateRes.body.user.name, "Verified Staff Operator");
+    assert.equal(updateRes.body.user.role, "staff");
+
+    // Check with GET /api/auth/me using profileCookie
+    const meCheck = await get("/api/auth/me", profileCookie);
+    assert.equal(meCheck.status, 200);
+    assert.equal(meCheck.body.user.name, "Verified Staff Operator");
+    assert.equal(meCheck.body.user.role, "staff");
+  });
+});

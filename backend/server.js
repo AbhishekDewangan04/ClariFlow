@@ -13,6 +13,7 @@ const {
   listUsers,
   createUser,
   updateUserRole,
+  updateUserName,
   deactivateUser,
   verifyPassword,
   createAuditLog,
@@ -55,6 +56,7 @@ function validateProductionEnv() {
 validateProductionEnv();
 
 const app = express();
+app.set("trust proxy", 1);
 
 // ─── RATE LIMITING ─────────────────────────────────────────────────────────────
 const isProduction = process.env.NODE_ENV === "production";
@@ -118,15 +120,36 @@ if (!BOT_TOKEN) {
 
 const isDirectExecution = require.main === module;
 
-const isPollingExplicitlyDisabled =
-  process.env.TELEGRAM_POLLING === "false" ||
-  process.env.TELEGRAM_POLLING === "0" ||
-  process.env.ENABLE_TELEGRAM_BOT === "false";
+function shouldEnablePolling(env = process.env, isDirect = isDirectExecution) {
+  if (!isDirect) return false;
+  if (env.NODE_ENV === "test" || process.execArgv?.includes("--test")) return false;
 
-const isPollingEnabled =
-  isDirectExecution &&
-  process.env.NODE_ENV !== "test" &&
-  !isPollingExplicitlyDisabled;
+  const pollingVal = String(env.TELEGRAM_POLLING || "").trim().toLowerCase();
+  const botVal = String(env.ENABLE_TELEGRAM_BOT || "").trim().toLowerCase();
+
+  if (pollingVal === "false" || pollingVal === "0" || botVal === "false" || botVal === "0") {
+    return false;
+  }
+  return true;
+}
+
+const isPollingEnabled = shouldEnablePolling();
+
+const botDiagnostics = {
+  pollingEnabled: isPollingEnabled,
+  conflictCount: 0,
+  lastConflictAt: null,
+  lastError: null,
+};
+
+function getBotStatus() {
+  if (!isPollingEnabled) return "disabled";
+  if (!bot || typeof bot.isPolling !== "function" || !bot.isPolling()) return "idle";
+  const isRecentConflict =
+    botDiagnostics.lastConflictAt &&
+    Date.now() - new Date(botDiagnostics.lastConflictAt).getTime() < 45000;
+  return isRecentConflict ? "conflict" : "polling";
+}
 
 const bot = new TelegramBot(BOT_TOKEN, {
   polling: isPollingEnabled,
@@ -134,27 +157,51 @@ const bot = new TelegramBot(BOT_TOKEN, {
 });
 
 let unauthorizedLogged = false;
-let conflictLogged = false;
+
 bot.on("polling_error", (error) => {
-  const msg = error.message || String(error);
+  const rawMsg = error.message || String(error);
+  // Redact any accidental bot token disclosure
+  const msg = rawMsg.replace(/bot[0-9]+:[A-Za-z0-9_-]+/g, "bot[REDACTED]");
+
   if (msg.includes("401") || msg.includes("Unauthorized")) {
     if (!unauthorizedLogged) {
       unauthorizedLogged = true;
+      botDiagnostics.lastError = "401 Unauthorized: invalid bot token";
       console.warn("Telegram BOT_TOKEN is unauthorized (401). Polling paused. Check BOT_TOKEN in .env or update via @BotFather.");
       bot.stopPolling().catch(() => {});
     }
     return;
   }
+
   if (msg.includes("409") || msg.includes("Conflict")) {
-    if (!conflictLogged) {
-      conflictLogged = true;
+    botDiagnostics.conflictCount++;
+    botDiagnostics.lastConflictAt = new Date().toISOString();
+    botDiagnostics.lastError = "409 Conflict: terminated by other getUpdates request";
+
+    // Diagnostic logging without token or secrets
+    // Log immediately on 1st, 5th, and every 25th conflict to inform operator without endless log spam
+    if (
+      botDiagnostics.conflictCount === 1 ||
+      botDiagnostics.conflictCount === 5 ||
+      botDiagnostics.conflictCount % 25 === 0
+    ) {
+      const isDocker = Boolean(
+        process.env.DOCKER_CONTAINER ||
+        process.env.IS_DOCKER ||
+        (process.platform === "linux" && require("fs").existsSync("/.dockerenv"))
+      );
       console.warn(
-        "Telegram 409 Conflict: another instance is polling Telegram with this token.\n" +
-        "To test locally with 'npm run dev', set TELEGRAM_POLLING=false on the Docker backend to yield polling."
+        `[Telegram 409 Conflict #${botDiagnostics.conflictCount}] Another poller is active with this bot token.\n` +
+        `  Timestamp : ${botDiagnostics.lastConflictAt}\n` +
+        `  Process   : PID ${process.pid} (Docker: ${isDocker})\n` +
+        `  Diagnostic: Exactly one instance may poll Telegram getUpdates at a time.\n` +
+        `  Action    : If running local dev while Docker container is up, set TELEGRAM_POLLING=false in root .env or backend/.env.`
       );
     }
     return;
   }
+
+  botDiagnostics.lastError = msg;
   console.warn("Telegram polling warning:", msg);
 });
 
@@ -332,14 +379,20 @@ app.get("/health", async (req, res) => {
     if (typeof pingDatabase === "function") {
       await pingDatabase();
     }
+    const currentBotStatus = getBotStatus();
     return res.json({
       status: "ok",
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
       database: "connected",
-      bot: bot && typeof bot.isPolling === "function" && bot.isPolling()
-        ? "polling"
-        : (isPollingEnabled ? "idle" : "disabled"),
+      bot: currentBotStatus,
+      botDiagnostics: {
+        pollingEnabled: isPollingEnabled,
+        status: currentBotStatus,
+        conflictCount: botDiagnostics.conflictCount,
+        lastConflictAt: botDiagnostics.lastConflictAt,
+        lastError: botDiagnostics.lastError,
+      },
     });
   } catch (err) {
     return res.status(503).json({
@@ -351,8 +404,8 @@ app.get("/health", async (req, res) => {
   }
 });
 
-/** Public: order lookup. No auth required — keeps the customer-facing kiosk open. */
-app.get("/api/orders/:orderNumber", async (req, res) => {
+/** Protected: order lookup requires authentication to protect customer and business data */
+app.get("/api/orders/:orderNumber", requireAuth, async (req, res) => {
   try {
     const rawOrderNumber = req.params.orderNumber;
     if (!rawOrderNumber || typeof rawOrderNumber !== "string") {
@@ -433,14 +486,24 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
 });
 
 /** POST /api/auth/logout — clears the cookie */
-app.post("/api/auth/logout", authLimiter, requireAuth, async (req, res) => {
-  await createAuditLog({
-    actorId: req.user.id,
-    actorEmail: req.user.email,
-    action: "logout",
-    target: null,
-    detail: null,
-  });
+app.post("/api/auth/logout", authLimiter, async (req, res) => {
+  const token = req.cookies?.["cf_token"];
+  if (!token) {
+    return res.status(401).json({ error: "Authentication required." });
+  }
+  try {
+    const jwt = require("jsonwebtoken");
+    const decoded = jwt.decode(token);
+    if (decoded && decoded.id) {
+      await createAuditLog({
+        actorId: decoded.id,
+        actorEmail: decoded.email,
+        action: "logout",
+        target: null,
+        detail: null,
+      });
+    }
+  } catch {}
   clearAuthCookie(res);
   return res.json({ message: "Logged out." });
 });
@@ -455,6 +518,55 @@ app.get("/api/auth/me", authLimiter, requireAuth, async (req, res) => {
       name: req.user.name,
     },
   });
+});
+
+/** PATCH /api/auth/profile — update current user's display name */
+app.patch("/api/auth/profile", authLimiter, requireAuth, async (req, res) => {
+  try {
+    const { name } = req.body || {};
+
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ error: "Name is required." });
+    }
+
+    const trimmed = name.trim();
+    if (trimmed.length > 100) {
+      return res.status(400).json({ error: "Name cannot exceed 100 characters." });
+    }
+
+    // Role, email, and ID modification are strictly disallowed
+    if (req.body.role !== undefined && req.body.role !== req.user.role) {
+      return res.status(403).json({ error: "You cannot change your own role." });
+    }
+
+    const updated = await updateUserName(req.user.id, trimmed);
+    if (!updated) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Update JWT cookie with new name so subsequent requests have the updated payload
+    const payload = {
+      id: updated.id,
+      email: updated.email,
+      role: updated.role,
+      name: updated.name,
+    };
+    const token = signToken(payload);
+    setAuthCookie(res, token);
+
+    await createAuditLog({
+      actorId: req.user.id,
+      actorEmail: req.user.email,
+      action: "user.profile_update",
+      target: updated.email,
+      detail: { newName: updated.name },
+    });
+
+    return res.json({ user: payload });
+  } catch (err) {
+    console.error("Profile update error:", err.message || err);
+    return res.status(500).json({ error: "Failed to update profile." });
+  }
 });
 
 // ─── ORDER MUTATION — STATUS UPDATE ──────────────────────────────────────────
@@ -806,4 +918,14 @@ async function gracefulShutdown(signal) {
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
-module.exports = { app, server, bot, handleTelegramMessage, chatSessions, queryAndReplyOrder };
+module.exports = {
+  app,
+  server,
+  bot,
+  handleTelegramMessage,
+  chatSessions,
+  queryAndReplyOrder,
+  shouldEnablePolling,
+  botDiagnostics,
+  getBotStatus,
+};

@@ -44,7 +44,8 @@ async function ensureUserTables() {
 }
 
 /**
- * Bootstrap: if no users exist, create an admin from env vars.
+ * Bootstrap: ensure an active admin account exists for the configured ADMIN_EMAIL.
+ * If user does not exist, creates it. If deactivated or demoted, reactivates and restores admin role.
  * ADMIN_EMAIL and ADMIN_PASSWORD must be set; ADMIN_NAME is optional.
  */
 async function bootstrapAdmin() {
@@ -58,19 +59,78 @@ async function bootstrapAdmin() {
   }
 
   const pool = getPool();
-  const existing = await pool.query('SELECT id FROM "User" LIMIT 1');
-  if (existing.rows.length > 0) {
-    return; // Users already exist; skip bootstrap.
+  const normalizedEmail = email.toLowerCase().trim();
+  const existing = await pool.query(
+    'SELECT id, password, "isActive", role FROM "User" WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [normalizedEmail]
+  );
+
+  const name = process.env.ADMIN_NAME || "Admin";
+
+  if (existing.rows.length === 0) {
+    const hashed = await bcrypt.hash(password, SALT_ROUNDS);
+    await pool.query(
+      `INSERT INTO "User" (email, name, password, role, "isActive") VALUES ($1, $2, $3, 'admin', TRUE)`,
+      [normalizedEmail, name, hashed]
+    );
+    console.log(`[Auth] Admin account created for ${normalizedEmail}`);
+  } else {
+    const adminUser = existing.rows[0];
+    const passwordMatches = await bcrypt.compare(password, adminUser.password);
+    if (!passwordMatches || !adminUser.isActive || adminUser.role !== "admin") {
+      const hashed = passwordMatches ? adminUser.password : await bcrypt.hash(password, SALT_ROUNDS);
+      await pool.query(
+        `UPDATE "User" SET password = $1, "isActive" = TRUE, role = 'admin', "updatedAt" = NOW() WHERE id = $2`,
+        [hashed, adminUser.id]
+      );
+      console.log(`[Auth] Admin account status and credentials synchronized for ${normalizedEmail}`);
+    }
+  }
+}
+
+/**
+ * Safely create or repair the admin user using the specified or environment credentials.
+ * Ensures the password uses bcrypt with SALT_ROUNDS, role is 'admin', and isActive is true.
+ * Never logs or exposes passwords, hashes, JWT secrets, cookies, or tokens.
+ */
+async function repairAdmin({ email, password, name } = {}) {
+  const targetEmail = (email || process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+  const targetPassword = password || process.env.ADMIN_PASSWORD;
+  const targetName = (name || process.env.ADMIN_NAME || "Admin").trim();
+
+  if (!targetEmail || !targetPassword) {
+    throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD must be provided or set in environment.");
   }
 
-  const hashed = await bcrypt.hash(password, SALT_ROUNDS);
-  const name = process.env.ADMIN_NAME || "Admin";
-  await pool.query(
-    `INSERT INTO "User" (email, name, password, role) VALUES ($1, $2, $3, 'admin')`,
-    [email.toLowerCase().trim(), name, hashed]
+  const pool = getPool();
+  await ensureUserTables();
+  const hashed = await bcrypt.hash(targetPassword, SALT_ROUNDS);
+
+  const existing = await pool.query(
+    'SELECT id FROM "User" WHERE LOWER(email) = LOWER($1) LIMIT 1',
+    [targetEmail]
   );
-  console.log(`[Auth] Admin account created for ${email}`);
+
+  if (existing.rows.length === 0) {
+    const res = await pool.query(
+      `INSERT INTO "User" (email, name, password, role, "isActive")
+       VALUES ($1, $2, $3, 'admin', TRUE)
+       RETURNING id, email, name, role, "isActive"`,
+      [targetEmail, targetName, hashed]
+    );
+    return { action: "created", user: res.rows[0] };
+  } else {
+    const res = await pool.query(
+      `UPDATE "User"
+       SET password = $1, name = $2, role = 'admin', "isActive" = TRUE, "updatedAt" = NOW()
+       WHERE id = $3
+       RETURNING id, email, name, role, "isActive"`,
+      [hashed, targetName, existing.rows[0].id]
+    );
+    return { action: "repaired", user: res.rows[0] };
+  }
 }
+
 
 /** Find a user by email (case-insensitive). Returns the full row or null. */
 async function getUserByEmail(email) {
@@ -135,6 +195,21 @@ async function updateUserRole(userId, newRole) {
      WHERE id = $2
      RETURNING id, email, name, role, "isActive", "updatedAt"`,
     [newRole, userId]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Update a user's display name.
+ * Returns the updated user (without password) or null if not found.
+ */
+async function updateUserName(userId, name) {
+  const pool = getPool();
+  const res = await pool.query(
+    `UPDATE "User" SET name = $1, "updatedAt" = NOW()
+     WHERE id = $2
+     RETURNING id, email, name, role, "isActive", "updatedAt"`,
+    [name.trim(), userId]
   );
   return res.rows[0] || null;
 }
@@ -225,9 +300,11 @@ module.exports = {
   listUsers,
   createUser,
   updateUserRole,
+  updateUserName,
   deactivateUser,
   verifyPassword,
   createAuditLog,
   listAuditLogs,
+  repairAdmin,
 };
 

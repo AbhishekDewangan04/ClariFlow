@@ -23,7 +23,7 @@ const UNAVAILABLE = [
   { icon: Send, label: 'Telegram bot status', reason: 'The backend exposes no Telegram status.' },
 ]
 
-const stats = container(0.07)
+const stats = container(0)
 
 function Row({ label, children }) {
   return (

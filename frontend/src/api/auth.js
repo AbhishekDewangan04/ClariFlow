@@ -3,18 +3,39 @@ import { ApiError } from '../lib/apiClient.js'
 
 const BASE = env.apiBaseUrl
 
-async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    credentials: 'include', // send the HTTP-only cookie
-    ...options,
-  })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    const msg = body?.error || body?.message || `Request failed (${res.status})`
-    throw new ApiError(msg, { status: res.status, kind: res.status === 401 ? 'unauthorized' : 'client' })
+export async function request(path, options = {}) {
+  const { allow401 = false, ...fetchOptions } = options
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...fetchOptions.headers,
+      },
+      credentials: 'include', // send the HTTP-only cookie
+      ...fetchOptions,
+    })
+    // 401 is the normal, expected response when logged out for endpoints that allow it
+    if (allow401 && res.status === 401) {
+      return { user: null }
+    }
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const msg = body?.error || body?.message || `Request failed (${res.status})`
+      let kind = 'client'
+      if (res.status === 401) kind = 'unauthorized'
+      else if (res.status === 429) kind = 'rate_limited'
+      else if (res.status >= 500) kind = 'server'
+      throw new ApiError(msg, { status: res.status, kind })
+    }
+    return body
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    throw new ApiError('Unable to connect to the server. Please check your internet connection or try again later.', {
+      kind: 'network',
+      status: null,
+    })
   }
-  return body
 }
 
 /** POST /api/auth/login → { user } */
@@ -30,9 +51,17 @@ export async function logout() {
   return request('/api/auth/logout', { method: 'POST' })
 }
 
-/** GET /api/auth/me → { user } | 401 */
+/** GET /api/auth/me → { user } | { user: null } */
 export async function getMe() {
-  return request('/api/auth/me')
+  return request('/api/auth/me', { allow401: true })
+}
+
+/** PATCH /api/auth/profile → { user } */
+export async function updateProfile({ name }) {
+  return request('/api/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
 }
 
 /** GET /api/admin/users → { users } */

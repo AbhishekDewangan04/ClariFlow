@@ -30,10 +30,17 @@ function signToken(payload) {
 /** Attach the auth cookie to a response. */
 function setAuthCookie(res, token) {
   const isProduction = process.env.NODE_ENV === "production";
+  const isCrossSite = Boolean(
+    process.env.CORS_ORIGIN &&
+    !process.env.CORS_ORIGIN.includes("localhost") &&
+    !process.env.CORS_ORIGIN.includes("127.0.0.1")
+  );
+  const useSameSiteNone = isProduction && isCrossSite;
+
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: useSameSiteNone,
+    sameSite: useSameSiteNone ? "none" : "lax",
     maxAge: 8 * 60 * 60 * 1000, // 8 hours in ms
     path: "/",
   });
@@ -42,10 +49,17 @@ function setAuthCookie(res, token) {
 /** Clear the auth cookie (logout). */
 function clearAuthCookie(res) {
   const isProduction = process.env.NODE_ENV === "production";
+  const isCrossSite = Boolean(
+    process.env.CORS_ORIGIN &&
+    !process.env.CORS_ORIGIN.includes("localhost") &&
+    !process.env.CORS_ORIGIN.includes("127.0.0.1")
+  );
+  const useSameSiteNone = isProduction && isCrossSite;
+
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: useSameSiteNone,
+    sameSite: useSameSiteNone ? "none" : "lax",
     path: "/",
   });
 }
@@ -88,6 +102,7 @@ async function requireAuth(req, res, next) {
     };
     next();
   } catch {
+    clearAuthCookie(res);
     return res.status(401).json({ error: "Session expired or invalid. Please log in again." });
   }
 }
